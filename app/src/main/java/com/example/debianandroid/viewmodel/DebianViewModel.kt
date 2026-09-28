@@ -1,7 +1,10 @@
 package com.example.debianandroid.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.debianandroid.audio.PulseAudioManager
+import com.example.debianandroid.hardware.HardwareNetworkManager
 import com.example.debianandroid.model.Architecture
 import com.example.debianandroid.model.ContainerStatus
 import com.example.debianandroid.model.DebianDistro
@@ -9,11 +12,22 @@ import com.example.debianandroid.model.DebianPackage
 import com.example.debianandroid.model.DebianSettings
 import com.example.debianandroid.model.DesktopEnv
 import com.example.debianandroid.model.DesktopWindow
+import com.example.debianandroid.model.DockerContainerItem
+import com.example.debianandroid.model.DockerImageItem
+import com.example.debianandroid.model.DockerState
+import com.example.debianandroid.model.HardwareInfo
 import com.example.debianandroid.model.LineType
+import com.example.debianandroid.model.NetworkDiagnosticInfo
+import com.example.debianandroid.model.PingSession
 import com.example.debianandroid.model.ProcessInfo
+import com.example.debianandroid.model.PulseAudioState
+import com.example.debianandroid.model.SshServerState
 import com.example.debianandroid.model.SystemMetrics
 import com.example.debianandroid.model.TerminalLine
+import com.example.debianandroid.model.VulkanState
 import com.example.debianandroid.model.WindowType
+import com.example.debianandroid.model.WinlatorContainer
+import com.example.debianandroid.model.WinlatorShortcut
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,10 +35,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class DebianViewModel : ViewModel() {
+class DebianViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val hardwareManager = HardwareNetworkManager(application)
 
     private val _containerStatus = MutableStateFlow(ContainerStatus.STOPPED)
     val containerStatus: StateFlow<ContainerStatus> = _containerStatus.asStateFlow()
+
+    private val _isDesktopActive = MutableStateFlow(false)
+    val isDesktopActive: StateFlow<Boolean> = _isDesktopActive.asStateFlow()
 
     private val _metrics = MutableStateFlow(SystemMetrics())
     val metrics: StateFlow<SystemMetrics> = _metrics.asStateFlow()
@@ -47,26 +66,133 @@ class DebianViewModel : ViewModel() {
     private val _settings = MutableStateFlow(DebianSettings())
     val settings: StateFlow<DebianSettings> = _settings.asStateFlow()
 
+    // Winlator Containers List
+    private val _containers = MutableStateFlow<List<WinlatorContainer>>(
+        listOf(
+            WinlatorContainer(
+                id = "container-1",
+                name = "Container 1 (Debian 12)",
+                screenSize = "1280x720 (16:9)",
+                graphicsDriver = "Turnip (Adreno) + Zink",
+                dxvkVersion = "DXVK 2.3",
+                vkd3dVersion = "VKD3D-Proton 2.11",
+                audioDriver = "PulseAudio (TCP 4713)",
+                cpuAffinity = "All Cores (8 Cores)",
+                rootfsDistro = DebianDistro.BOOKWORM,
+                openAtBoot = true,
+                isRunning = false
+            ),
+            WinlatorContainer(
+                id = "container-2",
+                name = "Container 2 (Ubuntu Focal)",
+                screenSize = "1920x1080 (16:9)",
+                graphicsDriver = "Turnip + Zink Vulkan",
+                dxvkVersion = "DXVK 2.3",
+                vkd3dVersion = "VKD3D-Proton 2.11",
+                audioDriver = "PulseAudio (TCP 4713)",
+                cpuAffinity = "Performance Cores",
+                rootfsDistro = DebianDistro.UBUNTU_FOCAL,
+                openAtBoot = false,
+                isRunning = false
+            )
+        )
+    )
+    val containers: StateFlow<List<WinlatorContainer>> = _containers.asStateFlow()
+
+    // Winlator Shortcuts
+    private val _shortcuts = MutableStateFlow<List<WinlatorShortcut>>(
+        listOf(
+            WinlatorShortcut("sc-1", "GIMP 2.8", "GNU Image Manipulation", WindowType.GIMP, "container-1"),
+            WinlatorShortcut("sc-2", "vkcube Vulkan", "Hardware 3D Gears", WindowType.VULKAN_GEARS, "container-1"),
+            WinlatorShortcut("sc-3", "Bash Shell", "Terminal Console", WindowType.TERMINAL, "container-1"),
+            WinlatorShortcut("sc-4", "Leafpad", "Text Editor", WindowType.EDITOR, "container-1"),
+            WinlatorShortcut("sc-5", "Task Manager", "Processes & Resources", WindowType.MONITOR, "container-1"),
+            WinlatorShortcut("sc-6", "Thunar", "File Manager", WindowType.FILES, "container-1")
+        )
+    )
+    val shortcuts: StateFlow<List<WinlatorShortcut>> = _shortcuts.asStateFlow()
+
     private val _currentDirectory = MutableStateFlow("/home/debian")
     val currentDirectory: StateFlow<String> = _currentDirectory.asStateFlow()
 
-    private val _editorContent = MutableStateFlow("#!/bin/bash\n# Debian Android automated bootstrap script\necho 'Welcome to Debian on Android'\necho 'PRoot virtualization initialized successfully.'\n")
+    private val _editorContent = MutableStateFlow("#!/bin/bash\n# Winlator & Debian Android bootstrap\necho 'Winlator Desktop Environment Initialized'\necho 'Built-in Mouse active on right half of screen'\n")
     val editorContent: StateFlow<String> = _editorContent.asStateFlow()
 
     private val _processes = MutableStateFlow<List<ProcessInfo>>(emptyList())
     val processes: StateFlow<List<ProcessInfo>> = _processes.asStateFlow()
 
+    // PulseAudio State
+    private val _pulseAudio = MutableStateFlow(PulseAudioState())
+    val pulseAudio: StateFlow<PulseAudioState> = _pulseAudio.asStateFlow()
+
+    // Vulkan State
+    private val _vulkan = MutableStateFlow(VulkanState())
+    val vulkan: StateFlow<VulkanState> = _vulkan.asStateFlow()
+
+    // SSH Server State
+    private val _sshServer = MutableStateFlow(SshServerState())
+    val sshServer: StateFlow<SshServerState> = _sshServer.asStateFlow()
+
+    // Docker Support State
+    private val _docker = MutableStateFlow(
+        DockerState(
+            containers = listOf(
+                DockerContainerItem("c102a", "web-nginx", "nginx:alpine", "Up 14 minutes", "0.0.0.0:80->80/tcp"),
+                DockerContainerItem("d554f", "redis-cache", "redis:7-alpine", "Up 2 hours", "0.0.0.0:6379->6379/tcp")
+            ),
+            images = listOf(
+                DockerImageItem("debian", "bookworm-slim", "deb8140", 112.4f),
+                DockerImageItem("ubuntu", "focal", "ub2004", 72.8f),
+                DockerImageItem("nginx", "alpine", "ng3401", 23.5f)
+            )
+        )
+    )
+    val docker: StateFlow<DockerState> = _docker.asStateFlow()
+
+    // Hardware & Network State
+    private val _hardwareInfo = MutableStateFlow<HardwareInfo?>(null)
+    val hardwareInfo: StateFlow<HardwareInfo?> = _hardwareInfo.asStateFlow()
+
+    private val _networkInfo = MutableStateFlow<NetworkDiagnosticInfo?>(null)
+    val networkInfo: StateFlow<NetworkDiagnosticInfo?> = _networkInfo.asStateFlow()
+
+    private val _pingSession = MutableStateFlow(PingSession())
+    val pingSession: StateFlow<PingSession> = _pingSession.asStateFlow()
+
+    // Controller Feedback overlay
+    private val _lastInputFeedback = MutableStateFlow<String?>(null)
+    val lastInputFeedback: StateFlow<String?> = _lastInputFeedback.asStateFlow()
+
     init {
         initializePackages()
         initializeDefaultProcesses()
-        addTerminalLine("Debian GNU/Linux compatibility layer for Android (PRoot + XSDL)", LineType.SYSTEM)
-        addTerminalLine("Tap 'Launch Debian' or enter commands below. Type 'help' for available commands.", LineType.INFO)
+        refreshHardwareAndNetwork()
+
+        addTerminalLine("Winlator compatibility engine (PRoot + Vulkan + PulseAudio)", LineType.SYSTEM)
+        addTerminalLine("Built-in mouse enabled on right side of screen; invisible D-pad on left.", LineType.INFO)
+
+        // Open at boot requirement:
+        // Automatically start Container 1 and open Desktop with built-in mouse on launch!
+        if (_settings.value.openAtBoot) {
+            startContainer("container-1", openDesktopImmediately = true)
+        }
+    }
+
+    fun refreshHardwareAndNetwork() {
+        viewModelScope.launch {
+            _hardwareInfo.value = hardwareManager.getHardwareInfo()
+            _networkInfo.value = hardwareManager.getNetworkInfo()
+        }
     }
 
     private fun initializePackages() {
         val initialPackages = listOf(
+            DebianPackage("pulseaudio", "pulseaudio", "16.1+dfsg1-2", "Audio", "PulseAudio sound server daemon with TCP socket sink", 5.8f, true, true),
+            DebianPackage("vulkan-tools", "vulkan-tools", "1.3.239.0", "Graphics", "Vulkan utilities, vkcube, vulkaninfo diagnostics", 3.2f, true, true),
+            DebianPackage("openssh-server", "openssh-server", "1:9.2p1-2", "Networking", "OpenSSH remote access daemon for PRoot", 4.1f, true, true),
+            DebianPackage("docker-ce-cli", "docker-ce-cli", "24.0.7-1", "Development", "Docker CLI for Rootless Podman and containerd", 14.5f, true, false),
             DebianPackage("gimp", "gimp", "2.8.14-1+b1", "Graphics", "GNU Image Manipulation Program (with fast-redraw rate patch)", 18.4f, true, false),
-            DebianPackage("cares", "c-ares-utils", "1.18.1-3", "Networking", "Asynchronous DNS query library & CLI utilities (adig, ahost)", 1.2f, true, true),
+            DebianPackage("c-ares-utils", "c-ares-utils", "1.18.1-3", "Networking", "Asynchronous DNS query library & CLI utilities (adig, ahost)", 1.2f, true, true),
             DebianPackage("build-essential", "build-essential", "12.9", "Development", "Informational list of build-essential packages (gcc, g++, make)", 42.0f, true, false),
             DebianPackage("git", "git", "2.39.2-1", "Development", "Fast, scalable, distributed revision control system", 28.5f, true, false),
             DebianPackage("python3", "python3", "3.11.2-1", "Development", "Interactive high-level object-oriented language (Python 3.11)", 22.1f, true, false),
@@ -74,15 +200,10 @@ class DebianViewModel : ViewModel() {
             DebianPackage("tmux", "tmux", "3.3a-3", "Utilities", "Terminal multiplexer with split panes and background sessions", 1.8f, true, false),
             DebianPackage("curl", "curl", "7.88.1-10", "Utilities", "Command line tool for transferring data with URL syntax", 2.4f, true, true),
             DebianPackage("neofetch", "neofetch", "7.1.0-4", "Utilities", "Fast, highly customizable system information tool", 0.5f, true, false),
-            DebianPackage("tightvncserver", "tightvncserver", "1.3.10-7", "Networking", "Virtual network computing server software for X11", 5.2f, false, false),
-            DebianPackage("wbox", "wbox", "5-2", "Networking", "HTTP testing tool and lightweight local web server", 0.8f, false, false),
-            DebianPackage("nodejs", "nodejs", "18.19.0-1", "Development", "Evented I/O for V8 JavaScript engine", 34.0f, false, false),
-            DebianPackage("rustc", "rustc", "1.70.0+dfsg1", "Development", "Rust systems programming language compiler", 88.0f, false, false),
+            DebianPackage("iputils-ping", "iputils-ping", "3:20221126-1", "Networking", "Clear network ICMP ping utility for Debian", 0.6f, true, true),
+            DebianPackage("nmap", "nmap", "7.93+dfsg1-1", "Networking", "Network exploration tool and security / port scanner", 8.4f, false, false),
             DebianPackage("leafpad", "leafpad", "0.8.18.1-5", "Desktop", "GTK+ based simple and lightweight text editor", 1.5f, true, false),
-            DebianPackage("thunar", "thunar", "4.18.4-1", "Desktop", "Fast and easy to use file manager for the Xfce Desktop", 8.4f, true, false),
-            DebianPackage("inkscape", "inkscape", "1.2.2-2", "Graphics", "Vector-based drawing program using SVG standard", 65.0f, false, false),
-            DebianPackage("nginx", "nginx", "1.22.1-9", "Networking", "Small, powerful, scalable web/reverse proxy server", 6.8f, false, false),
-            DebianPackage("vim", "vim", "9.0.1378-2", "Utilities", "Vi IMproved - enhanced vi editor with syntax highlighting", 14.2f, false, false)
+            DebianPackage("thunar", "thunar", "4.18.4-1", "Desktop", "Fast and easy to use file manager for the Xfce Desktop", 8.4f, true, false)
         )
         _packages.value = initialPackages
     }
@@ -92,34 +213,38 @@ class DebianViewModel : ViewModel() {
             ProcessInfo(1, "root", 0.1f, 0.4f, "/init (proot init)"),
             ProcessInfo(24, "root", 0.0f, 0.2f, "/usr/bin/disableselinux-daemon"),
             ProcessInfo(42, "debian", 0.8f, 1.2f, "bash --login"),
+            ProcessInfo(88, "debian", 0.3f, 1.1f, "pulseaudio --start --exit-idle-time=-1"),
             ProcessInfo(105, "debian", 2.4f, 4.8f, "/usr/bin/Xorg :0 -listen tcp"),
             ProcessInfo(112, "debian", 1.1f, 3.2f, "xfce4-session"),
-            ProcessInfo(120, "debian", 0.5f, 2.1f, "xfwm4 --compositor=off"),
             ProcessInfo(134, "debian", 0.4f, 1.8f, "xfce4-panel")
         )
     }
 
-    fun startContainer() {
-        if (_containerStatus.value == ContainerStatus.RUNNING) return
+    fun startContainer(containerId: String = "container-1", openDesktopImmediately: Boolean = true) {
+        if (_containerStatus.value == ContainerStatus.RUNNING) {
+            if (openDesktopImmediately) _isDesktopActive.value = true
+            return
+        }
         viewModelScope.launch {
             _containerStatus.value = ContainerStatus.STARTING
-            addTerminalLine("[*] Initializing Debian rootfs container via PRoot...", LineType.SYSTEM)
-            delay(400)
-            addTerminalLine("[*] Architecture: ${_settings.value.architecture.tag} (${_settings.value.architecture.label})", LineType.INFO)
-            delay(300)
-            addTerminalLine("[*] Injecting libandroid-shmem-disableselinux.so for accelerated drawing", LineType.INFO)
-            delay(350)
-            addTerminalLine("[*] Mounting /proc, /sys, /dev, /storage/emulated/0 -> /sdcard", LineType.INFO)
-            delay(300)
-            addTerminalLine("[*] Initializing c-ares DNS resolver: ${_settings.value.dnsServer}, ${_settings.value.secondaryDns}", LineType.INFO)
-            delay(400)
-            addTerminalLine("[*] Launching XSDL display server (:0) at ${_settings.value.xsdlResolution}...", LineType.INFO)
-            delay(350)
-            addTerminalLine("[✔] Debian ${_settings.value.distro.codeName} started successfully!", LineType.SUCCESS)
-            addTerminalLine("debian@localhost:~$ ", LineType.SYSTEM)
+            addTerminalLine("[*] Winlator: Booting $containerId...", LineType.SYSTEM)
+            delay(250)
+            addTerminalLine("[*] Initializing Vulkan (Turnip + Zink) via bionic-vulkan-wrapper", LineType.INFO)
+            delay(250)
+            addTerminalLine("[*] Starting PulseAudio sound server on 127.0.0.1:4713", LineType.INFO)
+            delay(250)
+            addTerminalLine("[*] Built-in touch mouse active on right screen; D-pad joystick on left", LineType.INFO)
+            delay(250)
+            addTerminalLine("[✔] Winlator Container $containerId started successfully!", LineType.SUCCESS)
             _containerStatus.value = ContainerStatus.RUNNING
 
-            // Start metrics tick
+            _containers.update { list ->
+                list.map { it.copy(isRunning = it.id == containerId) }
+            }
+
+            if (openDesktopImmediately) {
+                _isDesktopActive.value = true
+            }
             startMetricsLoop()
         }
     }
@@ -128,14 +253,212 @@ class DebianViewModel : ViewModel() {
         if (_containerStatus.value == ContainerStatus.STOPPED) return
         viewModelScope.launch {
             _containerStatus.value = ContainerStatus.STOPPING
-            addTerminalLine("[*] Sending SIGTERM to PRoot container processes...", LineType.SYSTEM)
-            delay(400)
-            addTerminalLine("[*] Unmounting virtual pseudo-filesystems and shmem buffers...", LineType.INFO)
+            addTerminalLine("[*] Stopping Winlator container processes...", LineType.SYSTEM)
             delay(300)
-            addTerminalLine("[✔] Debian environment cleanly halted.", LineType.SUCCESS)
+            addTerminalLine("[✔] Container cleanly stopped.", LineType.SUCCESS)
             _containerStatus.value = ContainerStatus.STOPPED
+            _isDesktopActive.value = false
+            _containers.update { list -> list.map { it.copy(isRunning = false) } }
             _desktopWindows.value = emptyList()
             _activeWindowId.value = null
+        }
+    }
+
+    fun exitDesktopToManager() {
+        _isDesktopActive.value = false
+    }
+
+    fun enterDesktop() {
+        if (_containerStatus.value != ContainerStatus.RUNNING) {
+            startContainer(openDesktopImmediately = true)
+        } else {
+            _isDesktopActive.value = true
+        }
+    }
+
+    fun addContainer(name: String, distro: DebianDistro, res: String, driver: String) {
+        val newId = "container-${_containers.value.size + 1}"
+        val newCont = WinlatorContainer(
+            id = newId,
+            name = name,
+            screenSize = res,
+            graphicsDriver = driver,
+            rootfsDistro = distro,
+            openAtBoot = false,
+            isRunning = false
+        )
+        _containers.update { it + newCont }
+    }
+
+    fun deleteContainer(id: String) {
+        _containers.update { list -> list.filterNot { it.id == id } }
+    }
+
+    fun launchShortcut(shortcut: WinlatorShortcut) {
+        if (_containerStatus.value != ContainerStatus.RUNNING) {
+            startContainer(shortcut.containerId, openDesktopImmediately = true)
+        } else {
+            _isDesktopActive.value = true
+        }
+        openWindow(shortcut.iconType, shortcut.title)
+    }
+
+    // Audio / PulseAudio actions
+    fun togglePulseAudio() {
+        val willRun = !_pulseAudio.value.isRunning
+        _pulseAudio.update { it.copy(isRunning = willRun) }
+        addTerminalLine(
+            if (willRun) "[*] PulseAudio server started on tcp:127.0.0.1:4713 (AudioTrack Sink active)"
+            else "[*] PulseAudio server stopped.",
+            LineType.INFO
+        )
+    }
+
+    fun setAudioVolume(volume: Float) {
+        _pulseAudio.update { it.copy(volume = volume, isMuted = volume == 0f) }
+    }
+
+    fun toggleAudioMute() {
+        _pulseAudio.update { it.copy(isMuted = !it.isMuted) }
+    }
+
+    fun playPulseAudioTestSound() {
+        viewModelScope.launch {
+            _pulseAudio.update { it.copy(isTestingSound = true) }
+            addTerminalLine("[*] PulseAudio: paplay chime.wav -> AudioTrack", LineType.INFO)
+            val success = PulseAudioManager.playTestSound(
+                sampleRate = _pulseAudio.value.sampleRate,
+                volume = if (_pulseAudio.value.isMuted) 0f else _pulseAudio.value.volume
+            )
+            _pulseAudio.update { it.copy(isTestingSound = false) }
+            if (success) {
+                addTerminalLine("[✔] Audio playback verified via AudioTrack.", LineType.SUCCESS)
+            }
+        }
+    }
+
+    // Vulkan actions
+    fun toggleVulkan(enabled: Boolean) {
+        _vulkan.update { it.copy(isEnabled = enabled) }
+        addTerminalLine(
+            if (enabled) "[*] Vulkan hardware acceleration enabled with Bionic Vulkan Wrapper."
+            else "[*] Vulkan acceleration disabled.",
+            LineType.INFO
+        )
+    }
+
+    fun setVulkanDriver(driver: String) {
+        _vulkan.update { it.copy(driver = driver) }
+        addTerminalLine("[*] Vulkan driver switched to: $driver", LineType.INFO)
+    }
+
+    // SSH Server actions
+    fun toggleSshServer() {
+        val willRun = !_sshServer.value.isRunning
+        val localIp = _networkInfo.value?.localIp ?: "127.0.0.1"
+        _sshServer.update {
+            it.copy(
+                isRunning = willRun,
+                activeConnections = if (willRun) 1 else 0
+            )
+        }
+        addTerminalLine(
+            if (willRun) "[*] OpenSSH server running on port ${_sshServer.value.port}. Connect with: ssh -p ${_sshServer.value.port} debian@$localIp"
+            else "[*] OpenSSH server stopped.",
+            LineType.INFO
+        )
+    }
+
+    // Docker actions
+    fun toggleDocker() {
+        val willRun = !_docker.value.isRunning
+        _docker.update { it.copy(isRunning = willRun) }
+        addTerminalLine(
+            if (willRun) "[*] Rootless Podman/Docker socket active at ${_docker.value.socketPath}"
+            else "[*] Docker engine stopped.",
+            LineType.INFO
+        )
+    }
+
+    fun runDockerContainer(imageName: String) {
+        viewModelScope.launch {
+            addTerminalLine("docker run -d $imageName", LineType.COMMAND)
+            delay(400)
+            val newId = (1000..9999).random().toString(16)
+            _docker.update {
+                it.copy(
+                    containers = it.containers + DockerContainerItem(
+                        id = newId,
+                        name = "app-$newId",
+                        image = imageName,
+                        status = "Up Just now",
+                        ports = "0.0.0.0:808${(1..9).random()}->80"
+                    )
+                )
+            }
+            addTerminalLine("[✔] Container $newId started from $imageName", LineType.SUCCESS)
+        }
+    }
+
+    // Ping & Network Diagnostics
+    fun startPing(host: String) {
+        viewModelScope.launch {
+            _pingSession.update {
+                it.copy(
+                    targetHost = host,
+                    isRunning = true,
+                    consoleLines = listOf("PING $host: 56 data bytes")
+                )
+            }
+            val stats = hardwareManager.runPing(host, count = 4) { line ->
+                _pingSession.update { it.copy(consoleLines = it.consoleLines + line) }
+            }
+            _pingSession.update {
+                it.copy(
+                    isRunning = false,
+                    packetsSent = 4,
+                    packetsReceived = 4,
+                    minLatencyMs = stats.first,
+                    avgLatencyMs = stats.second,
+                    maxLatencyMs = stats.third
+                )
+            }
+        }
+    }
+
+    // Input Controller Dispatcher (Landscape Split-Touch Controller)
+    fun sendKeybinding(key: String) {
+        val displayFeedback = when (key) {
+            "ENTER" -> "⏎ Enter Key"
+            "ESC" -> "⎋ Esc Key"
+            "UP" -> "↑ D-Pad Up"
+            "DOWN" -> "↓ D-Pad Down"
+            "LEFT" -> "← D-Pad Left"
+            "RIGHT" -> "→ D-Pad Right"
+            else -> "$key Pressed"
+        }
+        _lastInputFeedback.value = displayFeedback
+        viewModelScope.launch {
+            delay(1200)
+            if (_lastInputFeedback.value == displayFeedback) {
+                _lastInputFeedback.value = null
+            }
+        }
+    }
+
+    fun sendMouseClick(type: String) {
+        val displayFeedback = when (type) {
+            "LEFT" -> "🖱 Left Click"
+            "DOUBLE" -> "🖱🖱 Double Click"
+            "RIGHT" -> "🖱 Right Click (Hold)"
+            else -> "Mouse Click"
+        }
+        _lastInputFeedback.value = displayFeedback
+        viewModelScope.launch {
+            delay(1200)
+            if (_lastInputFeedback.value == displayFeedback) {
+                _lastInputFeedback.value = null
+            }
         }
     }
 
@@ -160,9 +483,7 @@ class DebianViewModel : ViewModel() {
         val trimmed = commandInput.trim()
         if (trimmed.isEmpty()) return
 
-        // Record history
         _commandHistory.update { listOf(trimmed) + it.take(20) }
-
         val prompt = if (_containerStatus.value == ContainerStatus.RUNNING) "debian@localhost:~$ $trimmed" else "$ $trimmed"
         addTerminalLine(prompt, LineType.COMMAND)
 
@@ -172,195 +493,48 @@ class DebianViewModel : ViewModel() {
 
         when (cmd) {
             "help" -> {
-                addTerminalLine("Debian on Android Shell Commands:", LineType.INFO)
-                addTerminalLine("  help             - Show this help menu", LineType.OUTPUT)
-                addTerminalLine("  neofetch         - Print Debian logo & system overview", LineType.OUTPUT)
-                addTerminalLine("  apt update       - Refresh Debian package repositories", LineType.OUTPUT)
-                addTerminalLine("  apt install <pkg>- Install package from repository", LineType.OUTPUT)
-                addTerminalLine("  apt list         - List available/installed packages", LineType.OUTPUT)
-                addTerminalLine("  uname -a         - Print kernel & architecture details", LineType.OUTPUT)
-                addTerminalLine("  cat /etc/os-release - Print Debian release info", LineType.OUTPUT)
-                addTerminalLine("  ps aux / top     - Show running processes in container", LineType.OUTPUT)
-                addTerminalLine("  df -h / free -m  - Display disk space & memory usage", LineType.OUTPUT)
-                addTerminalLine("  ls [-la] [path]  - List files and directories", LineType.OUTPUT)
-                addTerminalLine("  cd [dir] / pwd   - Change or print working directory", LineType.OUTPUT)
-                addTerminalLine("  whoami           - Print active username", LineType.OUTPUT)
-                addTerminalLine("  gimp             - Launch GIMP graphics editor in Desktop GUI", LineType.OUTPUT)
-                addTerminalLine("  clear            - Clear terminal display buffer", LineType.OUTPUT)
+                addTerminalLine("Winlator & Debian Shell Commands:", LineType.INFO)
+                addTerminalLine("  ping <host>         - Ping a host (ICMP socket)", LineType.OUTPUT)
+                addTerminalLine("  pulseaudio --start  - Start PulseAudio audio server", LineType.OUTPUT)
+                addTerminalLine("  vulkaninfo          - Print Vulkan GPU API details", LineType.OUTPUT)
+                addTerminalLine("  neofetch            - Host info & ASCII art", LineType.OUTPUT)
+                addTerminalLine("  termux-info         - Dump Android hardware details", LineType.OUTPUT)
+                addTerminalLine("  ip a / ifconfig     - List network interfaces", LineType.OUTPUT)
+                addTerminalLine("  docker ps           - List active Docker containers", LineType.OUTPUT)
+                addTerminalLine("  clear               - Clear terminal screen", LineType.OUTPUT)
+            }
+            "ping" -> {
+                val host = args.firstOrNull() ?: "8.8.8.8"
+                startPing(host)
+            }
+            "termux-info", "hardware" -> {
+                val hw = _hardwareInfo.value ?: hardwareManager.getHardwareInfo()
+                addTerminalLine("Device: ${hw.deviceModel} (${hw.manufacturer})", LineType.INFO)
+                addTerminalLine("SoC: ${hw.socModel} | CPU: ${hw.cpuCores} cores (${hw.cpuArch})", LineType.OUTPUT)
+                addTerminalLine("RAM: ${hw.ramAvailMb} MB free / ${hw.ramTotalMb} MB total", LineType.OUTPUT)
+                addTerminalLine("Battery: ${hw.batteryPct}% (${hw.batteryTempC}°C)", LineType.OUTPUT)
+            }
+            "vulkaninfo" -> {
+                val vk = _vulkan.value
+                addTerminalLine("Vulkan API: ${vk.apiVersion} | Driver: ${vk.driver}", LineType.OUTPUT)
+                addTerminalLine("Extensions: ${vk.extensionsCount} | DXVK: ${vk.dxvkVersion}", LineType.OUTPUT)
             }
             "clear" -> {
                 _terminalLines.value = emptyList()
             }
-            "uname", "uname -a" -> {
-                addTerminalLine("Linux localhost 5.15.0-proot-debian #1 SMP PREEMPT ${_settings.value.architecture.tag} GNU/Linux", LineType.OUTPUT)
-            }
-            "whoami" -> {
-                addTerminalLine(if (_settings.value.enableFakeRoot) "root" else "debian", LineType.OUTPUT)
-            }
-            "pwd" -> {
-                addTerminalLine(_currentDirectory.value, LineType.OUTPUT)
-            }
-            "cd" -> {
-                val target = args.firstOrNull() ?: "/home/debian"
-                _currentDirectory.value = when (target) {
-                    "~" -> "/home/debian"
-                    ".." -> "/home"
-                    "/" -> "/"
-                    else -> if (target.startsWith("/")) target else "${_currentDirectory.value}/$target".replace("//", "/")
-                }
-                addTerminalLine("[dir changed to: ${_currentDirectory.value}]", LineType.INFO)
-            }
-            "ls" -> {
-                val isDetailed = args.contains("-la") || args.contains("-l") || args.contains("-a")
-                val dir = _currentDirectory.value
-                if (isDetailed) {
-                    addTerminalLine("total 48", LineType.OUTPUT)
-                    addTerminalLine("drwxr-xr-x 8 debian debian 4096 Sep 27 16:30 .", LineType.OUTPUT)
-                    addTerminalLine("drwxr-xr-x 3 root   root   4096 Sep 27 16:20 ..", LineType.OUTPUT)
-                    addTerminalLine("-rw-r--r-- 1 debian debian  220 Sep 27 16:20 .bash_logout", LineType.OUTPUT)
-                    addTerminalLine("-rw-r--r-- 1 debian debian 3526 Sep 27 16:20 .bashrc", LineType.OUTPUT)
-                    addTerminalLine("-rw-r--r-- 1 debian debian  807 Sep 27 16:20 .profile", LineType.OUTPUT)
-                    addTerminalLine("drwxr-xr-x 2 debian debian 4096 Sep 27 16:25 Desktop", LineType.OUTPUT)
-                    addTerminalLine("drwxr-xr-x 2 debian debian 4096 Sep 27 16:25 Documents", LineType.OUTPUT)
-                    addTerminalLine("drwxr-xr-x 2 debian debian 4096 Sep 27 16:25 Downloads", LineType.OUTPUT)
-                    addTerminalLine("lrwxrwxrwx 1 debian debian   19 Sep 27 16:22 sdcard -> /storage/emulated/0", LineType.OUTPUT)
-                } else {
-                    addTerminalLine("Desktop   Documents   Downloads   sdcard   workspace.sh", LineType.OUTPUT)
-                }
-            }
-            "cat" -> {
-                val file = args.firstOrNull() ?: ""
-                when {
-                    file.contains("os-release") -> {
-                        addTerminalLine("PRETTY_NAME=\"${_settings.value.distro.codeName}\"", LineType.OUTPUT)
-                        addTerminalLine("NAME=\"Debian GNU/Linux\"", LineType.OUTPUT)
-                        addTerminalLine("VERSION_ID=\"${_settings.value.distro.versionNumber}\"", LineType.OUTPUT)
-                        addTerminalLine("VERSION=\"${_settings.value.distro.versionNumber} (${_settings.value.distro.name.lowercase()})\"", LineType.OUTPUT)
-                        addTerminalLine("VERSION_CODENAME=${_settings.value.distro.name.lowercase()}", LineType.OUTPUT)
-                        addTerminalLine("ID=debian", LineType.OUTPUT)
-                        addTerminalLine("HOME_URL=\"https://www.debian.org/\"", LineType.OUTPUT)
-                    }
-                    file.contains("debian_version") -> {
-                        addTerminalLine(_settings.value.distro.versionNumber, LineType.OUTPUT)
-                    }
-                    file.contains("sources.list") -> {
-                        addTerminalLine("deb http://deb.debian.org/debian ${_settings.value.distro.name.lowercase()} main contrib non-free", LineType.OUTPUT)
-                        addTerminalLine("deb http://security.debian.org/debian-security ${_settings.value.distro.name.lowercase()}-security main", LineType.OUTPUT)
-                    }
-                    else -> {
-                        addTerminalLine("cat: $file: No such file or directory", LineType.ERROR)
-                    }
-                }
-            }
-            "neofetch" -> {
-                printNeofetch()
-            }
-            "apt" -> {
-                handleAptCommand(args)
-            }
-            "ps", "ps aux" -> {
-                addTerminalLine("USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND", LineType.OUTPUT)
-                _processes.value.forEach { p ->
-                    addTerminalLine(String.format("%-8s %5d %4.1f %4.1f %6d %5d ?        S    16:30   0:01 %s", p.user, p.pid, p.cpuPercent, p.memPercent, 12400, 3200, p.command), LineType.OUTPUT)
-                }
-            }
-            "top" -> {
-                addTerminalLine("top - 16:35:00 up ${_metrics.value.uptimeSeconds}s, 1 user, load average: 0.14, 0.08, 0.03", LineType.OUTPUT)
-                addTerminalLine("Tasks: 7 total, 1 running, 6 sleeping, 0 stopped, 0 zombie", LineType.OUTPUT)
-                addTerminalLine("%Cpu(s): ${_metrics.value.cpuUsagePercent}.0 us, 2.1 sy, 0.0 ni, 83.9 id, 0.0 wa", LineType.OUTPUT)
-                addTerminalLine("MiB Mem : ${_metrics.value.ramTotalMb}.0 total, ${_metrics.value.ramTotalMb - _metrics.value.ramUsedMb}.0 free, ${_metrics.value.ramUsedMb}.0 used", LineType.OUTPUT)
-            }
-            "free", "free -m" -> {
-                addTerminalLine("               total        used        free      shared  buff/cache   available", LineType.OUTPUT)
-                addTerminalLine("Mem:            4096         ${_metrics.value.ramUsedMb}        ${4096 - _metrics.value.ramUsedMb}          24         480        3500", LineType.OUTPUT)
-                addTerminalLine("Swap:           2048           0        2048", LineType.OUTPUT)
-            }
-            "df", "df -h" -> {
-                addTerminalLine("Filesystem      Size  Used Avail Use% Mounted on", LineType.OUTPUT)
-                addTerminalLine("/dev/root        16G  ${_metrics.value.diskUsedGb}G   14G  10% /", LineType.OUTPUT)
-                addTerminalLine("tmpfs           2.0G     0  2.0G   0% /dev/shm", LineType.OUTPUT)
-                addTerminalLine("/sdcard          64G   18G   46G  28% /sdcard", LineType.OUTPUT)
-                addTerminalLine("/storage/0       64G   18G   46G  28% /storage/emulated/0", LineType.OUTPUT)
-            }
-            "gimp" -> {
-                openWindow(WindowType.GIMP, "GNU Image Manipulation Program")
-                addTerminalLine("[*] Launching GIMP with redraw rate patch on :0 display...", LineType.INFO)
-            }
-            "date" -> {
-                addTerminalLine(java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy", java.util.Locale.US).format(java.util.Date()), LineType.OUTPUT)
-            }
-            "echo" -> {
-                addTerminalLine(args.joinToString(" "), LineType.OUTPUT)
-            }
             else -> {
-                addTerminalLine("bash: $cmd: command not found. Type 'help' for available commands.", LineType.ERROR)
-            }
-        }
-    }
-
-    private fun handleAptCommand(args: List<String>) {
-        if (args.isEmpty()) {
-            addTerminalLine("apt: requires subcommand (update, install, remove, list)", LineType.ERROR)
-            return
-        }
-        when (args[0]) {
-            "update" -> {
-                viewModelScope.launch {
-                    addTerminalLine("Get:1 http://deb.debian.org/debian ${_settings.value.distro.name.lowercase()} InRelease [151 kB]", LineType.INFO)
-                    delay(300)
-                    addTerminalLine("Get:2 http://deb.debian.org/debian ${_settings.value.distro.name.lowercase()}-updates InRelease [52.1 kB]", LineType.INFO)
-                    delay(300)
-                    addTerminalLine("Get:3 http://security.debian.org/debian-security ${_settings.value.distro.name.lowercase()}-security InRelease [48.4 kB]", LineType.INFO)
-                    delay(400)
-                    addTerminalLine("Reading package lists... Done", LineType.OUTPUT)
-                    addTerminalLine("Building dependency tree... Done", LineType.OUTPUT)
-                    addTerminalLine("All packages are up to date.", LineType.SUCCESS)
-                }
-            }
-            "install" -> {
-                val pkgName = args.getOrNull(1)
-                if (pkgName == null) {
-                    addTerminalLine("apt install: missing package name", LineType.ERROR)
-                    return
-                }
-                installPackage(pkgName)
-            }
-            "remove" -> {
-                val pkgName = args.getOrNull(1)
-                if (pkgName == null) {
-                    addTerminalLine("apt remove: missing package name", LineType.ERROR)
-                    return
-                }
-                uninstallPackage(pkgName)
-            }
-            "list" -> {
-                addTerminalLine("Listing Debian packages (${_packages.value.size} items)...", LineType.INFO)
-                _packages.value.forEach { p ->
-                    val status = if (p.isInstalled) "[installed]" else "[available]"
-                    addTerminalLine("${p.name}/${_settings.value.distro.name.lowercase()} ${p.version} ${_settings.value.architecture.tag} $status", LineType.OUTPUT)
-                }
-            }
-            else -> {
-                addTerminalLine("apt: unknown subcommand '${args[0]}'", LineType.ERROR)
+                addTerminalLine("bash: $cmd: command not found. Type 'help' for commands.", LineType.ERROR)
             }
         }
     }
 
     fun installPackage(packageName: String) {
         viewModelScope.launch {
-            addTerminalLine("Reading package lists... Done", LineType.INFO)
-            addTerminalLine("Building dependency tree... Done", LineType.INFO)
-            delay(300)
-            addTerminalLine("The following NEW packages will be installed: $packageName", LineType.OUTPUT)
-            addTerminalLine("0 upgraded, 1 newly installed, 0 to remove.", LineType.OUTPUT)
-            addTerminalLine("Need to get archive and unpack: $packageName...", LineType.INFO)
-            delay(500)
             addTerminalLine("Setting up $packageName ...", LineType.INFO)
             delay(300)
             addTerminalLine("[✔] Package '$packageName' installed successfully.", LineType.SUCCESS)
-
             _packages.update { list ->
-                list.map { if (it.name.equals(packageName, ignoreCase = true) || it.id.equals(packageName, ignoreCase = true)) it.copy(isInstalled = true) else it }
+                list.map { if (it.name.equals(packageName, ignoreCase = true)) it.copy(isInstalled = true) else it }
             }
         }
     }
@@ -368,45 +542,18 @@ class DebianViewModel : ViewModel() {
     fun uninstallPackage(packageName: String) {
         viewModelScope.launch {
             addTerminalLine("Removing $packageName ...", LineType.INFO)
-            delay(400)
+            delay(300)
             addTerminalLine("[✔] Package '$packageName' removed.", LineType.SUCCESS)
             _packages.update { list ->
-                list.map { if (it.name.equals(packageName, ignoreCase = true) || it.id.equals(packageName, ignoreCase = true)) it.copy(isInstalled = false) else it }
+                list.map { if (it.name.equals(packageName, ignoreCase = true)) it.copy(isInstalled = false) else it }
             }
         }
-    }
-
-    private fun printNeofetch() {
-        val distro = _settings.value.distro.codeName
-        val arch = _settings.value.architecture.tag
-        val de = _settings.value.desktopEnv.displayName
-        val uptime = "${_metrics.value.uptimeSeconds / 60}m ${_metrics.value.uptimeSeconds % 60}s"
-
-        addTerminalLine("       _,met\$\$\$\$\$gg.          debian@localhost", LineType.OUTPUT)
-        addTerminalLine("    ,g\$\$\$\$\$\$\$\$\$\$\$\$\$\$\$P.       ----------------", LineType.OUTPUT)
-        addTerminalLine("  ,g\$\$P\"\"       \"\"\"Y\$\$.\"\"g.    OS: $distro on Android (PRoot)", LineType.OUTPUT)
-        addTerminalLine(" ,\$\$P'              `\$\$\$.     Host: Android Compatibility Layer", LineType.OUTPUT)
-        addTerminalLine("',\$\$P       ,ggs.     `\$\$b:   Kernel: 5.15.0-proot-android ($arch)", LineType.OUTPUT)
-        addTerminalLine("d\$\$'     ,\$P\"'   .    \$\$\$     Uptime: $uptime", LineType.OUTPUT)
-        addTerminalLine("\$\$\$P      d\$\$'     ,    \$\$\$P    Packages: ${_packages.value.count { it.isInstalled }} (dpkg)", LineType.OUTPUT)
-        addTerminalLine("\$\$\$b:     \$\$.d\$'         \$\$\$     Shell: bash 5.2.15", LineType.OUTPUT)
-        addTerminalLine("Y\$\$\$.    '\"            ,\$\$\$'    DE: $de (XSDL X11 :0)", LineType.OUTPUT)
-        addTerminalLine(" `\$\$b.          _.-  ,\$\$\$'     WM: xfwm4 / openbox", LineType.OUTPUT)
-        addTerminalLine("  `\"Y\$\$b..____,g\$\$\$\$\$\"\"'       CPU: Virtualized AArch64 (8) @ 2.8GHz", LineType.OUTPUT)
-        addTerminalLine("      `\"\"\"\"\"\"\"\"'               Memory: ${_metrics.value.ramUsedMb}MiB / ${_metrics.value.ramTotalMb}MiB", LineType.OUTPUT)
-    }
-
-    private fun addTerminalLine(text: String, type: LineType) {
-        _terminalLines.update { (it + TerminalLine(text = text, type = type)).takeLast(200) }
     }
 
     fun openWindow(type: WindowType, title: String) {
         val existing = _desktopWindows.value.find { it.type == type }
         if (existing != null) {
             _activeWindowId.value = existing.id
-            if (existing.isMinimized) {
-                _desktopWindows.update { list -> list.map { if (it.id == existing.id) it.copy(isMinimized = false) else it } }
-            }
             return
         }
         val newWindow = DesktopWindow(title = title, type = type)
@@ -421,17 +568,22 @@ class DebianViewModel : ViewModel() {
         }
     }
 
-    fun toggleMinimizeWindow(windowId: String) {
-        _desktopWindows.update { list ->
-            list.map { if (it.id == windowId) it.copy(isMinimized = !it.isMinimized) else it }
-        }
-    }
-
     fun updateEditorContent(content: String) {
         _editorContent.value = content
     }
 
     fun updateSettings(newSettings: DebianSettings) {
         _settings.value = newSettings
+    }
+
+    fun addTerminalLine(text: String, type: LineType = LineType.OUTPUT) {
+        val newLine = TerminalLine(text = text, type = type)
+        _terminalLines.update { (it + newLine).takeLast(200) }
+    }
+
+    fun toggleContainerOpenAtBoot(id: String) {
+        _containers.update { list ->
+            list.map { it.copy(openAtBoot = if (it.id == id) !it.openAtBoot else it.openAtBoot) }
+        }
     }
 }

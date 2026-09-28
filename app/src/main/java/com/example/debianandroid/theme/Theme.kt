@@ -4,25 +4,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
-private val DarkColorScheme = darkColorScheme(
-    primary = DebianRed,
+private val WinlatorColorScheme = darkColorScheme(
+    primary = WinlatorBlue,
     onPrimary = TextPrimary,
-    primaryContainer = DebianRedContainer,
-    onPrimaryContainer = DebianRedLight,
+    primaryContainer = WinlatorBlueContainer,
+    onPrimaryContainer = WinlatorBlueLight,
     secondary = AccentCyan,
-    onSecondary = DarkSurface,
-    secondaryContainer = DarkSurfaceElevated,
+    onSecondary = WinlatorDarkBg,
+    secondaryContainer = WinlatorCard,
     onSecondaryContainer = AccentCyan,
     tertiary = AccentGreen,
-    onTertiary = DarkSurface,
-    background = DarkSurface,
+    onTertiary = WinlatorDarkBg,
+    background = WinlatorDarkBg,
     onBackground = TextPrimary,
-    surface = DarkSurfaceVariant,
+    surface = WinlatorSurface,
     onSurface = TextPrimary,
-    surfaceVariant = DarkSurfaceElevated,
+    surfaceVariant = WinlatorCard,
     onSurfaceVariant = TextSecondary,
-    outline = BorderSubtle,
-    outlineVariant = DarkSurfaceVariant
+    outline = WinlatorBorder,
+    outlineVariant = WinlatorCardElevated
 )
 
 @Composable
@@ -30,7 +30,7 @@ fun DebianAndroidTheme(
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
-        colorScheme = DarkColorScheme,
+        colorScheme = WinlatorColorScheme,
         typography = Typography,
         content = content
     )

@@ -1,7 +1,9 @@
 package com.example.debianandroid.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,15 +11,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Monitor
-import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -27,12 +35,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,8 +50,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,8 +61,10 @@ import com.example.debianandroid.model.Architecture
 import com.example.debianandroid.model.DebianDistro
 import com.example.debianandroid.model.DebianSettings
 import com.example.debianandroid.model.DesktopEnv
+import com.example.debianandroid.model.LIBRARIES_USED
 import com.example.debianandroid.theme.AccentCyan
 import com.example.debianandroid.theme.AccentGreen
+import com.example.debianandroid.theme.AccentYellow
 import com.example.debianandroid.theme.BorderSubtle
 import com.example.debianandroid.theme.DarkSurface
 import com.example.debianandroid.theme.DarkSurfaceElevated
@@ -69,6 +83,7 @@ fun SettingsScreen(
     var distroExpanded by remember { mutableStateOf(false) }
     var archExpanded by remember { mutableStateOf(false) }
     var desktopExpanded by remember { mutableStateOf(false) }
+    var showLibrariesDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
@@ -103,7 +118,7 @@ fun SettingsScreen(
                             value = settings.distro.codeName,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Debian Distro Release") },
+                            label = { Text("Linux Distro Release") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = distroExpanded) },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -215,6 +230,54 @@ fun SettingsScreen(
             }
         }
 
+        // Libraries Used Card (As shown in GameNative / Winlator image)
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showLibrariesDialog = true }
+                    .testTag("libraries_used_card"),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(DebianRed.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Code, null, tint = DebianRed, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Libraries Used",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "See technologies: Pluvia, JavaSteam, Winlator, Bionic Vulkan Wrapper",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted
+                            )
+                        }
+                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = TextMuted)
+                }
+            }
+        }
+
         // PRoot Virtualization Engine Settings
         item {
             Card(
@@ -256,20 +319,11 @@ fun SettingsScreen(
                         isChecked = settings.bindSdCard,
                         onCheckedChange = { onSettingsChanged(settings.copy(bindSdCard = it)) }
                     )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    SettingToggleRow(
-                        title = "Enable link2symlink",
-                        subtitle = "Translate hard links to symlinks on FAT/exFAT filesystems",
-                        isChecked = settings.enableLink2Symlink,
-                        onCheckedChange = { onSettingsChanged(settings.copy(enableLink2Symlink = it)) }
-                    )
                 }
             }
         }
 
-        // c-ares DNS Resolver & Networking
+        // DNS Resolver
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -283,12 +337,6 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Uses c-ares asynchronous DNS library to resolve names without root network privileges.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -304,51 +352,70 @@ fun SettingsScreen(
                             unfocusedBorderColor = BorderSubtle
                         )
                     )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = settings.secondaryDns,
-                        onValueChange = { onSettingsChanged(settings.copy(secondaryDns = it)) },
-                        label = { Text("Fallback DNS Nameserver") },
-                        modifier = Modifier.fillMaxWidth().testTag("secondary_dns_input"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = DarkSurfaceElevated,
-                            unfocusedContainerColor = DarkSurfaceElevated,
-                            focusedBorderColor = AccentCyan,
-                            unfocusedBorderColor = BorderSubtle
-                        )
-                    )
-                }
-            }
-        }
-
-        // About & License
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant),
-                border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "About Debian on Android",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Rewrite of LordZitin/debian-android for modern Android with Jetpack Compose. Includes PRoot virtualization, c-ares DNS resolver, SELinux shmem accelerator hook, and XSDL desktop integration.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
                 }
             }
         }
 
         item { Spacer(modifier = Modifier.height(24.dp)) }
+    }
+
+    // Libraries Used Dialog (matching uploaded screenshot)
+    if (showLibrariesDialog) {
+        AlertDialog(
+            onDismissRequest = { showLibrariesDialog = false },
+            title = {
+                Text(
+                    text = "Libraries Used",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            },
+            text = {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.height(340.dp)
+                ) {
+                    items(LIBRARIES_USED) { lib ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(DarkSurfaceElevated)
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = lib.name,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = AccentCyan
+                            )
+                            Text(
+                                text = lib.url,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                color = TextMuted
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = lib.purpose,
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { showLibrariesDialog = false },
+                    colors = ButtonDefaults.textButtonColors(contentColor = DebianRed)
+                ) {
+                    Text("Close", fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = DarkSurfaceVariant
+        )
     }
 }
 
