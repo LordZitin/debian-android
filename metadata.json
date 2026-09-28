@@ -1,0 +1,8 @@
+{
+  "name": "Debian Android",
+  "description": "Run Debian Linux desktop environments, terminal tools, and package management on Android without root using PRoot compatibility.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

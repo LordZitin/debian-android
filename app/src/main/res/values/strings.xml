@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Debian Android</string>
+    <string name="tagline">Run Debian Linux desktop and tools on Android without root</string>
+    <string name="status_running">Running</string>
+    <string name="status_stopped">Stopped</string>
+    <string name="status_installing">Configuring</string>
+    <string name="action_start">Launch Debian</string>
+    <string name="action_stop">Stop Environment</string>
+    <string name="action_terminal">Open Terminal</string>
+    <string name="action_desktop">Open Desktop GUI</string>
+    <string name="tab_dashboard">Dashboard</string>
+    <string name="tab_terminal">Terminal</string>
+    <string name="tab_desktop">Desktop X11</string>
+    <string name="tab_packages">Packages</string>
+    <string name="tab_settings">Settings</string>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="debian_red">#D70A53</color>
+    <color name="debian_red_dark">#A80030</color>
+    <color name="surface_dark">#12131C</color>
+    <color name="terminal_bg">#0C0D14</color>
+</resources>
